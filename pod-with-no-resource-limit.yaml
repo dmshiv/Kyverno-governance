@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-no-resources
+  labels:
+    app: nginx-test
+spec:
+  containers:
+  - name: nginx
+    image: nginx:stable
+
+##container wont be created as no resource/limits defined and kyverno policy will deny it

@@ -1,0 +1,63 @@
+###***policy allows pods creation only if they have resources/limit else no ****
+
+## Kyverno ClusterPolicy to require CPU/memory requests and limits on containers
+# apiVersion/kind: identifies this as a Kyverno ClusterPolicy means applies cluster-wide all namespaces **
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  # policy name used when applying or viewing the resource
+  name: require-pod-requests-limits
+  annotations:
+    # Human-friendly metadata (used by dashboards and policy catalogs)
+    policies.kyverno.io/title: Require Pod Requests and Limits
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/description: >-
+      Require every Pod to have CPU and memory requests and limits defined.
+spec:
+  # When set to 'enforce', failing requests are rejected at admission.
+  # (Older Kyverno versions used validationFailureAction; newer use failureAction.)
+
+##set audit to test the policy without blocking pod creation
+#set it back to enforce once testing done  ******
+
+  validationFailureAction: audit
+  # Run background scans (validate existing resources). Autogen rules will also be created
+  # so controllers (Deployments/StatefulSets/CronJobs) are covered.
+  background: true
+  rules:
+    - name: check-resources
+      # 'match' decides which resources this rule applies to. Here we match Pods directly.
+      match:
+        resources:
+          kinds:
+            - Pod
+      # 'validate' defines enforcement logic. We iterate over each container in the Pod
+      # using 'foreach' and deny the object if any container is missing requests/limits.
+      validate:
+        foreach:
+          - list: "request.object.spec.containers[]"
+            deny:
+              conditions:
+                any:
+                  # These conditions check the container's resources object.
+                  # If any of the following JMESPath keys evaluate to null, the deny triggers.
+                  - key: "{{ element.resources.requests.cpu }}"
+                    operator: Equals
+                    value: null
+                  - key: "{{ element.resources.requests.memory }}"
+                    operator: Equals
+                    value: null
+                  - key: "{{ element.resources.limits.cpu }}"
+                    operator: Equals
+                    value: null
+                  - key: "{{ element.resources.limits.memory }}"
+                    operator: Equals
+                    value: null
+
+# Notes for readers:
+# - 'request.object' is the incoming object being admitted/validated (a Pod).
+# - 'element' is each item of the list (each container) while iterating.
+# - The policy will be autogen'd for controllers: Kyverno creates equivalent rules
+#   that point into pod templates (e.g. request.object.spec.template.spec.containers[])
+#   so Deployments/StatefulSets/CronJobs are validated too.
+# - 'allowExistingViolations' is not set here, so background scans will report violations.
